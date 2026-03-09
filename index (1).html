@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KTS Work Agent</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-authentication-library/2.38.3/msal-browser.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0e0f11;
+    --surface: #16181c;
+    --surface2: #1e2026;
+    --border: #2a2d35;
+    --accent: #00c896;
+    --accent-dim: rgba(0,200,150,0.1);
+    --accent2: #0088ff;
+    --text: #e8eaf0;
+    --text-muted: #6b7280;
+    --text-dim: #9ca3af;
+    --danger: #ff4d6d;
+    --warn: #f59e0b;
+    --user-bubble: #1a2535;
+    --agent-bubble: #161a20;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-mark { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; color: #000; }
+  .logo-text { font-size: 15px; font-weight: 600; }
+  .logo-sub { font-size: 11px; color: var(--text-muted); }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .status-pill { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--border); border-radius: 20px; font-size: 12px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; }
+  .status-pill.connected { border-color: rgba(0,200,150,0.4); color: var(--accent); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .dot.pulse { animation: pulse 2s infinite; }
+  .sign-btn { padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; }
+  .sign-btn.signin { background: var(--accent); color: #000; }
+  .sign-btn.signin:hover { opacity: 0.85; }
+  .sign-btn.signout { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
+  .sign-btn.signout:hover { border-color: var(--danger); color: var(--danger); }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+  .sidebar { width: 220px; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; padding: 16px 12px; gap: 4px; flex-shrink: 0; }
+  .sidebar-label { font-size: 10px; font-family: 'IBM Plex Mono', monospace; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; padding: 0 8px; margin-bottom: 4px; margin-top: 8px; }
+  .sidebar-label:first-child { margin-top: 0; }
+  .quick-btn { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; color: var(--text-dim); transition: all 0.15s; border: none; background: none; width: 100%; text-align: left; }
+  .quick-btn:hover { background: var(--surface2); color: var(--text); }
+  .quick-btn .icon { font-size: 15px; width: 20px; text-align: center; }
+
+  .chat-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; scroll-behavior: smooth; }
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .login-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 18px; text-align: center; padding: 40px; animation: fadeIn 0.5s ease forwards; }
+  .login-icon { font-size: 52px; margin-bottom: 4px; }
+  .login-screen h2 { font-size: 22px; font-weight: 500; }
+  .login-screen p { font-size: 14px; color: var(--text-muted); max-width: 380px; line-height: 1.6; }
+  .ms-login-btn { display: flex; align-items: center; gap: 10px; padding: 12px 24px; background: #2563eb; border: none; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; margin-top: 4px; }
+  .ms-login-btn:hover { background: #1d4ed8; transform: translateY(-1px); }
+  .api-key-row { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 360px; }
+  .api-key-row label { font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; text-align: left; }
+  .api-key-row input { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 13px; outline: none; transition: border-color 0.2s; width: 100%; }
+  .api-key-row input:focus { border-color: var(--accent); }
+  .divider { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 360px; color: var(--text-muted); font-size: 12px; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  .welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 16px; text-align: center; padding: 40px; animation: fadeIn 0.6s ease forwards; }
+  .welcome-icon { font-size: 48px; margin-bottom: 8px; }
+  .welcome h2 { font-size: 22px; font-weight: 500; }
+  .welcome p { font-size: 14px; color: var(--text-muted); max-width: 400px; line-height: 1.6; }
+  .caps { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+  .cap { padding: 5px 12px; border: 1px solid var(--border); border-radius: 20px; font-size: 12px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; }
+
+  .msg { display: flex; gap: 12px; opacity: 0; animation: slideIn 0.3s ease forwards; }
+  .msg.user { flex-direction: row-reverse; }
+  .avatar { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; flex-shrink: 0; }
+  .avatar.agent { background: var(--accent-dim); border: 1px solid rgba(0,200,150,0.3); color: var(--accent); }
+  .avatar.user { background: rgba(0,136,255,0.1); border: 1px solid rgba(0,136,255,0.3); color: var(--accent2); }
+  .bubble { max-width: 70%; padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+  .msg.agent .bubble { background: var(--agent-bubble); border: 1px solid var(--border); border-top-left-radius: 3px; }
+  .msg.user .bubble { background: var(--user-bubble); border: 1px solid rgba(0,136,255,0.2); border-top-right-radius: 3px; }
+
+  .confirm-card { border: 1px solid var(--warn); border-radius: 10px; padding: 14px 16px; background: rgba(245,158,11,0.05); margin-top: 10px; font-size: 13px; }
+  .confirm-title { font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: var(--warn); letter-spacing: 0.5px; margin-bottom: 8px; text-transform: uppercase; }
+  .confirm-detail { color: var(--text-dim); margin-bottom: 12px; line-height: 1.6; }
+  .confirm-actions { display: flex; gap: 8px; }
+  .btn-confirm { padding: 6px 16px; background: var(--accent); border: none; border-radius: 6px; color: #000; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn-confirm:hover { opacity: 0.85; }
+  .btn-cancel { padding: 6px 16px; background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); font-size: 12px; cursor: pointer; }
+  .btn-cancel:hover { border-color: var(--danger); color: var(--danger); }
+
+  .typing { display: flex; gap: 4px; padding: 6px 0; align-items: center; }
+  .typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: bounce 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+  .input-area { padding: 16px 24px 20px; border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  .input-row { display: flex; gap: 10px; align-items: flex-end; }
+  .input-wrap { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; display: flex; align-items: flex-end; padding: 10px 14px; transition: border-color 0.2s; }
+  .input-wrap:focus-within { border-color: rgba(0,200,150,0.4); }
+  textarea { flex: 1; background: none; border: none; outline: none; color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; resize: none; line-height: 1.5; max-height: 120px; overflow-y: auto; }
+  textarea::placeholder { color: var(--text-muted); }
+  .send-btn { width: 40px; height: 40px; background: var(--accent); border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #000; font-size: 16px; transition: all 0.2s; flex-shrink: 0; }
+  .send-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+  .send-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+  .input-hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
+
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideIn { to { opacity: 1; } }
+  @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">KTS</div>
+    <div>
+      <div class="logo-text">Work Agent</div>
+      <div class="logo-sub">Kingdom Technology Services</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-pill" id="ms-status">
+      <div class="dot"></div>
+      <span>Not signed in</span>
+    </div>
+    <button class="sign-btn signin" id="auth-btn" onclick="toggleAuth()">Sign in with Microsoft</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-label">Quick Actions</div>
+    <button class="quick-btn" onclick="quickAction('Draft a professional email to a prospect introducing KTS UV disinfection solutions')"><span class="icon">✉️</span> New Email</button>
+    <button class="quick-btn" onclick="quickAction('Create a price sheet for a UV disinfection system proposal')"><span class="icon">📊</span> Price Sheet</button>
+    <button class="quick-btn" onclick="quickAction('Schedule a meeting with a client to discuss UV system requirements')"><span class="icon">📅</span> Schedule Meeting</button>
+    <button class="quick-btn" onclick="quickAction('Summarize my most recent unread emails')"><span class="icon">📥</span> Inbox Summary</button>
+    <div class="sidebar-label">Tools</div>
+    <button class="quick-btn" onclick="quickAction('Check my calendar for today and tomorrow')"><span class="icon">🗓</span> View Calendar</button>
+    <button class="quick-btn" onclick="quickAction('Show my recent sent emails')"><span class="icon">📤</span> Sent Emails</button>
+    <div class="sidebar-label" style="margin-top:auto">Options</div>
+    <button class="quick-btn" onclick="clearChat()"><span class="icon">🗑</span> Clear Chat</button>
+  </div>
+
+  <div class="chat-area">
+    <div class="messages" id="messages">
+      <div class="login-screen" id="login-screen">
+        <div class="login-icon">⚡</div>
+        <h2>KTS Work Agent</h2>
+        <p>Sign in with your Microsoft account to access Outlook email, Excel price sheets, and Calendar scheduling.</p>
+        <div class="api-key-row">
+          <label>Anthropic API Key</label>
+          <input type="password" id="api-key-input" placeholder="sk-ant-...">
+        </div>
+        <div class="divider">then</div>
+        <button class="ms-login-btn" onclick="signIn()">
+          <svg width="20" height="20" viewBox="0 0 21 21" fill="none">
+            <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+            <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+            <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+            <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+          </svg>
+          Sign in with Microsoft
+        </button>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-row">
+        <div class="input-wrap">
+          <textarea id="input" placeholder="Ask me to draft an email, create a price sheet, schedule a meeting..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        </div>
+        <button class="send-btn" id="send-btn" onclick="sendMessage()">➤</button>
+      </div>
+      <div class="input-hint">Enter to send · Shift+Enter for new line · Always confirms before sending</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const msalConfig = {
+  auth: {
+    clientId: '264a9f0c-4126-4045-a251-481c429ee866',
+    authority: 'https://login.microsoftonline.com/0b941b8c-26c5-4c76-aefd-ce3b0fef17d3',
+    redirectUri: 'https://kts247trader.github.io/KTS-agent/'
+  },
+  cache: { cacheLocation: 'sessionStorage' }
+};
+
+const loginRequest = {
+  scopes: ['User.Read', 'Mail.ReadWrite', 'Mail.Send', 'Calendars.ReadWrite', 'Files.ReadWrite']
+};
+
+let msalInstance, msAccount = null, msToken = null;
+let conversationHistory = [];
+
+async function init() {
+  msalInstance = new msal.PublicClientApplication(msalConfig);
+  await msalInstance.initialize();
+
+  try {
+    const response = await msalInstance.handleRedirectPromise();
+    if (response) { msAccount = response.account; msToken = response.accessToken; onSignedIn(); return; }
+  } catch(e) {}
+
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    msAccount = accounts[0];
+    try {
+      const r = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msAccount });
+      msToken = r.accessToken;
+      onSignedIn();
+    } catch(e) { msAccount = null; }
+  }
+
+  const saved = sessionStorage.getItem('kts_key');
+  if (saved) document.getElementById('api-key-input').value = saved;
+}
+
+async function signIn() {
+  const key = document.getElementById("api-key-input").value.trim();
+  if (key) sessionStorage.setItem("kts_key", key);
+  try {
+    if (!msalInstance) {
+      msalInstance = new msal.PublicClientApplication(msalConfig);
+      await msalInstance.initialize();
+    }
+    await msalInstance.loginRedirect(loginRequest);
+  } catch(e) {
+    alert("Sign in failed: " + (e.message || e));
+  }
+}
+
+async function signOut() {
+  sessionStorage.removeItem('kts_key');
+  msAccount = null; msToken = null;
+  try { await msalInstance.logoutRedirect(); } catch(e) { location.reload(); }
+}
+
+function toggleAuth() { msAccount ? signOut() : signIn(); }
+
+function onSignedIn() {
+  document.getElementById('ms-status').className = 'status-pill connected';
+  document.getElementById('ms-status').innerHTML = `<div class="dot pulse"></div><span>${msAccount.username}</span>`;
+  document.getElementById('auth-btn').className = 'sign-btn signout';
+  document.getElementById('auth-btn').textContent = 'Sign out';
+  document.getElementById('login-screen')?.remove();
+  showWelcome();
+}
+
+function getKey() { return sessionStorage.getItem('kts_key') || ''; }
+
+async function graph(method, path, body) {
+  try {
+    const r = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msAccount });
+    msToken = r.accessToken;
+  } catch(e) {}
+  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    method, headers: { 'Authorization': `Bearer ${msToken}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || `Graph ${res.status}`); }
+  return res.status === 204 ? null : res.json();
+}
+
+async function sendEmail({to, subject, body}) {
+  await graph('POST', '/me/sendMail', { message: { subject, body: { contentType: 'HTML', content: body.replace(/\n/g,'<br>') }, toRecipients: [{ emailAddress: { address: to } }] }, saveToSentItems: true });
+  return `Email sent to ${to} — "${subject}"`;
+}
+
+async function getEmails({folder='inbox', count=5}) {
+  const d = await graph('GET', `/me/mailFolders/${folder}/messages?$top=${count}&$orderby=receivedDateTime desc&$select=subject,from,receivedDateTime,bodyPreview,isRead`);
+  return d.value.map(e => `${e.isRead ? '  ' : '🔵 '}${e.subject}\n   From: ${e.from.emailAddress.address} · ${new Date(e.receivedDateTime).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}\n   ${e.bodyPreview?.substring(0,100)}...`).join('\n\n');
+}
+
+async function createEvent({subject, startDateTime, endDateTime, attendees=[], body=''}) {
+  const e = await graph('POST', '/me/events', { subject, body: { contentType: 'HTML', content: body }, start: { dateTime: startDateTime, timeZone: 'America/Chicago' }, end: { dateTime: endDateTime, timeZone: 'America/Chicago' }, attendees: attendees.map(a => ({ emailAddress: { address: a }, type: 'required' })) });
+  return e.webLink;
+}
+
+async function getEvents({days=3}) {
+  const now = new Date(), end = new Date(now);
+  end.setDate(end.getDate() + days);
+  const d = await graph('GET', `/me/events?$filter=start/dateTime ge '${now.toISOString()}' and start/dateTime le '${end.toISOString()}'&$orderby=start/dateTime&$select=subject,start,end,attendees`);
+  return d.value.length ? d.value.map(e => `• ${e.subject}\n  ${new Date(e.start.dateTime).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`).join('\n') : 'No upcoming events.';
+}
+
+async function createExcel({filename, rows}) {
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const res = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/KTS Work Agent/${filename}:/content`, {
+    method: 'PUT', headers: { 'Authorization': `Bearer ${msToken}`, 'Content-Type': 'text/csv' }, body: new TextEncoder().encode(csv)
+  });
+  const d = await res.json();
+  return d.webUrl || 'Saved to OneDrive';
+}
+
+const SYSTEM = `You are the KTS Work Agent for Kingdom Technology Services (Houston-based UV disinfection). You help Pete with Outlook email, Excel price sheets, and Outlook Calendar.
+
+TOOLS — when using one, respond ONLY with a JSON block (no extra text):
+{"action":"send_email","params":{"to":"email","subject":"...","body":"..."},"preview":"brief description","draft":"full email content for review"}
+{"action":"get_emails","params":{"folder":"inbox","count":5},"preview":"...","draft":"Fetching your recent emails"}
+{"action":"create_event","params":{"subject":"...","startDateTime":"2026-03-10T14:00:00","endDateTime":"2026-03-10T15:00:00","attendees":["email"],"body":"..."},"preview":"...","draft":"full meeting details for review"}
+{"action":"get_events","params":{"days":3},"preview":"...","draft":"Checking your calendar"}
+{"action":"create_excel","params":{"filename":"price-sheet.csv","rows":[["Item","Description","Qty","Unit Price","Total","Notes"],["..."]]},"preview":"...","draft":"full table preview"}
+
+RULES:
+1. Always confirm before sending or saving — show full content in "draft" field.
+2. For plain responses, just write text (no JSON).
+3. KTS serves beverage (FEMSA, Pepsi), pharma (Genentech), municipal water, industrial clients.
+4. Troy Smith = KTS founder. Pete = sales strategy.
+5. Houston timezone (CT). Today: ${new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}`;
+
+async function callClaude(msg) {
+  const key = getKey();
+  if (!key) throw new Error('No Anthropic API key. Please sign out and sign back in.');
+  conversationHistory.push({ role: 'user', content: msg });
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1500, system: SYSTEM, messages: conversationHistory })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  const reply = data.content[0].text;
+  conversationHistory.push({ role: 'assistant', content: reply });
+  return reply;
+}
+
+function showWelcome() {
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = '';
+  msgs.innerHTML = `<div class="welcome"><div class="welcome-icon">⚡</div><h2>Ready to work, Pete</h2><p>Connected to Microsoft 365. Ask me to draft emails, build price sheets, or schedule meetings.</p><div class="caps"><span class="cap">Outlook Mail</span><span class="cap">Excel/OneDrive</span><span class="cap">Calendar</span><span class="cap">Claude AI</span></div></div>`;
+}
+
+function removeWelcome() { document.querySelector('.welcome, .login-screen')?.remove(); }
+
+function addMsg(role, text, extra) {
+  removeWelcome();
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div'); div.className = `msg ${role}`;
+  const av = document.createElement('div'); av.className = `avatar ${role}`; av.textContent = role === 'user' ? 'YOU' : 'KTS';
+  const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = text;
+  if (extra) bubble.appendChild(extra);
+  div.appendChild(av); div.appendChild(bubble);
+  msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
+  return bubble;
+}
+
+function addTyping() {
+  removeWelcome();
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div'); div.className = 'msg agent'; div.id = 'typing';
+  const av = document.createElement('div'); av.className = 'avatar agent'; av.textContent = 'KTS';
+  const b = document.createElement('div'); b.className = 'bubble'; b.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  div.appendChild(av); div.appendChild(b); msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
+}
+
+function parseAction(text) {
+  const m = text.match(/\{[\s\S]*?"action"[\s\S]*?\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch(e) {} }
+  return null;
+}
+
+async function handleResponse(text) {
+  const action = parseAction(text);
+  if (!action) { addMsg('agent', text); return; }
+
+  const card = document.createElement('div'); card.className = 'confirm-card';
+  card.innerHTML = `<div class="confirm-title">⚠️ Confirm — ${action.action.replace(/_/g,' ').toUpperCase()}</div><div class="confirm-detail">${(action.draft||action.preview||'').replace(/\n/g,'<br>')}</div><div class="confirm-actions"><button class="btn-confirm" id="do-exec">✓ Confirm & Execute</button><button class="btn-cancel" id="do-cancel">✕ Cancel</button></div>`;
+  addMsg('agent', action.preview || 'Please review:', card);
+  document.getElementById('do-exec').onclick = () => execAction(action, card);
+  document.getElementById('do-cancel').onclick = () => { card.querySelector('.confirm-actions').innerHTML = '<span style="color:var(--text-muted);font-size:12px">Cancelled.</span>'; addMsg('agent', 'Action cancelled. What else can I help with?'); };
+}
+
+async function execAction(action, card) {
+  card.querySelector('.confirm-actions').innerHTML = '<span style="color:var(--accent);font-size:12px;font-family:\'IBM Plex Mono\'">⏳ Executing...</span>';
+  try {
+    let result = '';
+    if (action.action === 'send_email') result = '✅ ' + await sendEmail(action.params);
+    else if (action.action === 'get_emails') result = '📥 Recent emails:\n\n' + await getEmails(action.params);
+    else if (action.action === 'create_event') { const link = await createEvent(action.params); result = `✅ Meeting scheduled: "${action.params.subject}"\n📎 ${link}`; }
+    else if (action.action === 'get_events') result = '📅 Upcoming events:\n\n' + await getEvents(action.params);
+    else if (action.action === 'create_excel') { const url = await createExcel(action.params); result = `✅ Price sheet saved: ${action.params.filename}\n📎 ${url}`; }
+    else result = '✅ Done.';
+    conversationHistory.push({ role: 'user', content: `[Action result: ${result}]` });
+    addMsg('agent', result);
+  } catch(e) {
+    addMsg('agent', `❌ Error: ${e.message}\n\nTip: Try signing out and back in if this is a permissions issue.`);
+  }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('input');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!msAccount) { addMsg('agent', 'Please sign in with Microsoft first.'); return; }
+  input.value = ''; autoResize(input);
+  document.getElementById('send-btn').disabled = true;
+  addMsg('user', text); addTyping();
+  try {
+    const reply = await callClaude(text);
+    document.getElementById('typing')?.remove();
+    await handleResponse(reply);
+  } catch(e) {
+    document.getElementById('typing')?.remove();
+    addMsg('agent', `❌ ${e.message}`);
+  }
+  document.getElementById('send-btn').disabled = false;
+  input.focus();
+}
+
+function quickAction(t) { document.getElementById('input').value = t; sendMessage(); }
+function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
+function autoResize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
+function clearChat() { conversationHistory = []; if (msAccount) showWelcome(); }
+
+init();
+</script>
+</body>
+</html>
